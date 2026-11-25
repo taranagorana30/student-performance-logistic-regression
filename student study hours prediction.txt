@@ -1,0 +1,712 @@
+
+import pandas as pd
+import numpy as np
+import tkinter as tk
+
+from tkinter import messagebox
+
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+from sklearn.linear_model import LogisticRegression
+from statsmodels.miscmodels.ordinal_model import OrderedModel
+
+
+# ========================================
+# STEP 1: CREATE DATASET
+# ========================================
+
+data = {
+    "Hours": [1, 2, 3, 4, 5, 6,
+              7, 8, 9, 10, 11, 12],
+
+    "Binary": [0, 0, 0, 0, 0, 1,
+               1, 1, 1, 1, 1, 1],
+
+    "Multi": [
+        "Low", "Low", "Low", "Low",
+        "Medium", "Medium", "Medium", "Medium",
+        "High", "High", "High", "High"
+    ],
+
+    "Ordinal": [
+        "Poor", "Poor", "Poor",
+        "Average", "Average", "Average",
+        "Good", "Good", "Good",
+        "Excellent", "Excellent", "Excellent"
+    ]
+}
+
+df = pd.DataFrame(data)
+
+print(df)
+
+
+# ========================================
+# STEP 2: INPUT DATA
+# ========================================
+
+X = df[["Hours"]]
+
+y_binary = df["Binary"]
+
+y_multi = df["Multi"]
+
+
+# ========================================
+# STEP 3: TRAIN BINARY MODEL
+# ========================================
+
+binary_model = LogisticRegression()
+
+binary_model.fit(
+    X,
+    y_binary
+)
+
+
+# ========================================
+# STEP 4: TRAIN MULTINOMIAL MODEL
+# ========================================
+
+multi_model = LogisticRegression()
+
+multi_model.fit(
+    X,
+    y_multi
+)
+
+
+# ========================================
+# STEP 5: TRAIN ORDINAL MODEL
+# ========================================
+
+y_ordinal = pd.Series(
+    pd.Categorical(
+        df["Ordinal"],
+        categories=[
+            "Poor",
+            "Average",
+            "Good",
+            "Excellent"
+        ],
+        ordered=True
+    )
+)
+
+ordinal_model = OrderedModel(
+    y_ordinal,
+    X,
+    distr="logit"
+)
+
+ordinal_result = ordinal_model.fit(
+    method="bfgs",
+    disp=False
+)
+
+ordinal_classes = [
+    "Poor",
+    "Average",
+    "Good",
+    "Excellent"
+]
+
+
+# ========================================
+# STEP 6: PREDICTION FUNCTION
+# ========================================
+
+def predict_student():
+
+    name = name_entry.get().strip()
+
+    hours = hours_entry.get().strip()
+
+    # Check student name
+
+    if name == "":
+        messagebox.showerror(
+            "Input Error",
+            "Please enter student name"
+        )
+        return
+
+    # Check study hours
+
+    try:
+        hours = float(hours)
+
+    except ValueError:
+        messagebox.showerror(
+            "Input Error",
+            "Please enter valid study hours"
+        )
+        return
+
+    # Check range
+
+    if hours < 1 or hours > 12:
+        messagebox.showerror(
+            "Input Error",
+            "Study hours must be between 1 and 12"
+        )
+        return
+
+    # Create new student data
+
+    new_student = pd.DataFrame({
+        "Hours": [hours]
+    })
+
+    # --------------------------------
+    # BINARY PREDICTION
+    # --------------------------------
+
+    binary_prediction = binary_model.predict(
+        new_student
+    )
+
+    if binary_prediction[0] == 1:
+
+        binary_result = "Pass"
+
+    else:
+
+        binary_result = "Fail"
+
+    # --------------------------------
+    # MULTINOMIAL PREDICTION
+    # --------------------------------
+
+    multi_prediction = multi_model.predict(
+        new_student
+    )
+
+    multi_result = multi_prediction[0]
+
+    # --------------------------------
+    # ORDINAL PREDICTION
+    # --------------------------------
+
+    ordinal_prediction = ordinal_result.model.predict(
+        ordinal_result.params,
+        exog=new_student
+    )
+
+    ordinal_result_value = ordinal_classes[
+        np.argmax(ordinal_prediction[0])
+    ]
+
+    # --------------------------------
+    # DISPLAY RESULTS
+    # --------------------------------
+
+    result_label.config(
+        text=(
+            f"Student Name : {name}\n\n"
+            f"Study Hours : {hours}\n\n"
+            f"Binary Result : {binary_result}\n\n"
+            f"Multinomial Result : {multi_result}\n\n"
+            f"Ordinal Result : {ordinal_result_value}"
+        )
+    )
+
+
+# ========================================
+# STEP 7: SHOW GRAPHS FUNCTION
+# ========================================
+
+def show_graph():
+
+    # Create new Tkinter graph window
+
+    graph_window = tk.Toplevel(root)
+
+    graph_window.title(
+        "Logistic Regression Graphs"
+    )
+
+    graph_window.geometry(
+        "1200x650"
+    )
+
+    graph_window.configure(
+        bg="#EAF2F8"
+    )
+
+    # --------------------------------
+    # GRAPH DATA
+    # --------------------------------
+
+    X_range = pd.DataFrame({
+        "Hours": np.linspace(1, 12, 100)
+    })
+
+    # Binary Probability
+
+    binary_prob = binary_model.predict_proba(
+        X_range
+    )[:, 1]
+
+    # Multinomial Probability
+
+    multi_prob = multi_model.predict_proba(
+        X_range
+    )
+
+    # Ordinal Probability
+
+    ordinal_prob = ordinal_result.model.predict(
+        ordinal_result.params,
+        exog=X_range
+    )
+
+    # --------------------------------
+    # CREATE FIGURE
+    # --------------------------------
+
+    fig = Figure(
+        figsize=(12, 5),
+        dpi=100
+    )
+
+    axes = fig.subplots(
+        1, 3
+    )
+
+    # ========================================
+    # GRAPH 1: BINARY
+    # ========================================
+
+    axes[0].scatter(
+        X["Hours"],
+        y_binary,
+        label="Actual Data"
+    )
+
+    axes[0].plot(
+        X_range["Hours"],
+        binary_prob,
+        color="red",
+        linewidth=2,
+        label="Prediction"
+    )
+
+    axes[0].axhline(
+        0.5,
+        linestyle="--",
+        color="black",
+        label="Threshold"
+    )
+
+    axes[0].set_title(
+        "Binary Logistic Regression"
+    )
+
+    axes[0].set_xlabel(
+        "Study Hours"
+    )
+
+    axes[0].set_ylabel(
+        "Pass Probability"
+    )
+
+    axes[0].set_ylim(
+        -0.1, 1.1
+    )
+
+    axes[0].legend(
+        fontsize=8
+    )
+
+    axes[0].grid(
+        True
+    )
+
+    # ========================================
+    # GRAPH 2: MULTINOMIAL
+    # ========================================
+
+    for i, category in enumerate(
+        multi_model.classes_
+    ):
+
+        axes[1].plot(
+            X_range["Hours"],
+            multi_prob[:, i],
+            linewidth=2,
+            label=category
+        )
+
+    axes[1].set_title(
+        "Multinomial Logistic Regression"
+    )
+
+    axes[1].set_xlabel(
+        "Study Hours"
+    )
+
+    axes[1].set_ylabel(
+        "Probability"
+    )
+
+    axes[1].set_ylim(
+        0, 1
+    )
+
+    axes[1].legend(
+        fontsize=8
+    )
+
+    axes[1].grid(
+        True
+    )
+
+    # ========================================
+    # GRAPH 3: ORDINAL
+    # ========================================
+
+    for i, category in enumerate(
+        ordinal_classes
+    ):
+
+        axes[2].plot(
+            X_range["Hours"],
+            ordinal_prob[:, i],
+            linewidth=2,
+            label=category
+        )
+
+    axes[2].set_title(
+        "Ordinal Logistic Regression"
+    )
+
+    axes[2].set_xlabel(
+        "Study Hours"
+    )
+
+    axes[2].set_ylabel(
+        "Probability"
+    )
+
+    axes[2].set_ylim(
+        0, 1
+    )
+
+    axes[2].legend(
+        fontsize=8
+    )
+
+    axes[2].grid(
+        True
+    )
+
+    # --------------------------------
+    # ADJUST GRAPH SPACING
+    # --------------------------------
+
+    fig.tight_layout()
+
+    # --------------------------------
+    # DISPLAY GRAPH IN TKINTER
+    # --------------------------------
+
+    canvas = FigureCanvasTkAgg(
+        fig,
+        master=graph_window
+    )
+
+    canvas.draw()
+
+    canvas.get_tk_widget().pack(
+        fill="both",
+        expand=True
+    )
+
+
+# ========================================
+# STEP 8: CLEAR FUNCTION
+# ========================================
+
+def clear_form():
+
+    name_entry.delete(
+        0, tk.END
+    )
+
+    hours_entry.delete(
+        0, tk.END
+    )
+
+    result_label.config(
+        text="Prediction results will appear here"
+    )
+
+
+# ========================================
+# STEP 9: CREATE TKINTER WINDOW
+# ========================================
+
+root = tk.Tk()
+
+root.title(
+    "Student Performance Prediction"
+)
+
+root.geometry(
+    "750x700"
+)
+
+root.configure(
+    bg="#EAF2F8"
+)
+
+
+# ========================================
+# HEADING
+# ========================================
+
+heading = tk.Label(
+    root,
+    text="STUDENT PERFORMANCE PREDICTION",
+    font=("Arial", 20, "bold"),
+    bg="#1F618D",
+    fg="white",
+    pady=20
+)
+
+heading.pack(
+    fill="x"
+)
+
+
+# ========================================
+# SUB HEADING
+# ========================================
+
+sub_heading = tk.Label(
+    root,
+    text="Predict student performance using Logistic Regression",
+    font=("Arial", 11),
+    bg="#EAF2F8",
+    fg="#34495E"
+)
+
+sub_heading.pack(
+    pady=10
+)
+
+
+# ========================================
+# FORM FRAME
+# ========================================
+
+form_frame = tk.Frame(
+    root,
+    bg="white",
+    padx=30,
+    pady=25
+)
+
+form_frame.pack(
+    padx=40,
+    pady=15,
+    fill="x"
+)
+
+
+# ========================================
+# STUDENT NAME
+# ========================================
+
+name_label = tk.Label(
+    form_frame,
+    text="Student Name",
+    font=("Arial", 12, "bold"),
+    bg="white",
+    fg="#2C3E50"
+)
+
+name_label.grid(
+    row=0,
+    column=0,
+    sticky="w",
+    pady=12
+)
+
+name_entry = tk.Entry(
+    form_frame,
+    font=("Arial", 12),
+    width=30,
+    relief="solid",
+    bd=1
+)
+
+name_entry.grid(
+    row=0,
+    column=1,
+    pady=12,
+    padx=15
+)
+
+
+# ========================================
+# STUDY HOURS
+# ========================================
+
+hours_label = tk.Label(
+    form_frame,
+    text="Study Hours",
+    font=("Arial", 12, "bold"),
+    bg="white",
+    fg="#2C3E50"
+)
+
+hours_label.grid(
+    row=1,
+    column=0,
+    sticky="w",
+    pady=12
+)
+
+hours_entry = tk.Entry(
+    form_frame,
+    font=("Arial", 12),
+    width=30,
+    relief="solid",
+    bd=1
+)
+
+hours_entry.grid(
+    row=1,
+    column=1,
+    pady=12,
+    padx=15
+)
+
+
+# ========================================
+# BUTTON FRAME
+# ========================================
+
+button_frame = tk.Frame(
+    root,
+    bg="#EAF2F8"
+)
+
+button_frame.pack(
+    pady=15
+)
+
+
+# ========================================
+# PREDICT BUTTON
+# ========================================
+
+predict_button = tk.Button(
+    button_frame,
+    text="PREDICT",
+    font=("Arial", 11, "bold"),
+    bg="#2874A6",
+    fg="white",
+    width=13,
+    height=2,
+    command=predict_student
+)
+
+predict_button.grid(
+    row=0,
+    column=0,
+    padx=8
+)
+
+
+# ========================================
+# SHOW GRAPHS BUTTON
+# ========================================
+
+graph_button = tk.Button(
+    button_frame,
+    text="SHOW GRAPHS",
+    font=("Arial", 11, "bold"),
+    bg="#239B56",
+    fg="white",
+    width=13,
+    height=2,
+    command=show_graph
+)
+
+graph_button.grid(
+    row=0,
+    column=1,
+    padx=8
+)
+
+
+# ========================================
+# CLEAR BUTTON
+# ========================================
+
+clear_button = tk.Button(
+    button_frame,
+    text="CLEAR",
+    font=("Arial", 11, "bold"),
+    bg="#CB4335",
+    fg="white",
+    width=13,
+    height=2,
+    command=clear_form
+)
+
+clear_button.grid(
+    row=0,
+    column=2,
+    padx=8
+)
+
+
+# ========================================
+# RESULT FRAME
+# ========================================
+
+result_frame = tk.LabelFrame(
+    root,
+    text="Prediction Result",
+    font=("Arial", 13, "bold"),
+    bg="white",
+    fg="#1F618D",
+    padx=25,
+    pady=20
+)
+
+result_frame.pack(
+    padx=40,
+    pady=20,
+    fill="both",
+    expand=True
+)
+
+
+# ========================================
+# RESULT LABEL
+# ========================================
+
+result_label = tk.Label(
+    result_frame,
+    text="Prediction results will appear here",
+    font=("Arial", 13),
+    bg="white",
+    fg="#17202A",
+    justify="left"
+)
+
+result_label.pack()
+
+
+# ========================================
+# RUN APPLICATION
+# ========================================
+
+root.mainloop()
